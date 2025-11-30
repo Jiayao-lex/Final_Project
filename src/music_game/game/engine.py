@@ -1,10 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional
-
-import yaml
 
 from ..audio.analysis import extract_essentia_descriptors
 from ..audio.input import (
@@ -16,37 +13,8 @@ from ..audio.input import (
 )
 from ..emotion.model import EmotionClassifier, EmotionPrediction, FEATURE_KEYS
 from ..llm.dialogue import DEFAULT_BASE_URL, DialogueTurn, OllamaClient
-
-
-@dataclass
-class GameResult:
-    chord: Optional[ChordPrediction]
-    emotion: Optional[EmotionPrediction]
-    descriptors: Dict[str, float | str]
-    dialogue: Optional[DialogueTurn]
-
-
-@dataclass
-class GameConfig:
-    sample_rate: int = 22050
-    hop_length: int = 512
-    confidence_threshold: float = 0.5
-    emotion_labels: List[str] = field(default_factory=lambda: ["joyful", "melancholic", "tense", "calm"])
-    ollama_model: str = "llama3"
-    history_limit: int = 6
-
-    @classmethod
-    def from_file(cls, path: str | Path) -> "GameConfig":
-        with Path(path).expanduser().open("r", encoding="utf-8") as handle:
-            raw = yaml.safe_load(handle) or {}
-        return cls(
-            sample_rate=int(raw.get("sample_rate", cls.sample_rate)),
-            hop_length=int(raw.get("hop_length", cls.hop_length)),
-            confidence_threshold=float(raw.get("confidence_threshold", cls.confidence_threshold)),
-            emotion_labels=list(raw.get("emotion_labels", cls().emotion_labels)),
-            ollama_model=str(raw.get("ollama", {}).get("model", cls.ollama_model)),
-            history_limit=int(raw.get("history_limit", cls.history_limit)),
-        )
+from .common import GameConfig, GameResult
+from .unreal_client import UnrealClient
 
 
 class MusicEmotionGame:
@@ -63,6 +31,10 @@ class MusicEmotionGame:
             model_path=emotion_model_path,
         )
         self.ollama = OllamaClient(base_url=ollama_base_url or DEFAULT_BASE_URL, model=config.ollama_model)
+        
+        self.unreal_client: Optional[UnrealClient] = None
+        if config.unreal_enabled:
+            self.unreal_client = UnrealClient(ip=config.unreal_ip, port=config.unreal_port)
 
     def process_audio_file(self, file_path: str | Path) -> GameResult:
         samples, sr = load_audio_samples(file_path, sample_rate=self.config.sample_rate)
@@ -71,7 +43,12 @@ class MusicEmotionGame:
         descriptors = extract_essentia_descriptors(samples, sr)
         emotion = self._infer_emotion(descriptors)
         dialogue = self._generate_dialogue(chord, emotion, descriptors)
-        return GameResult(chord=chord, emotion=emotion, descriptors=descriptors, dialogue=dialogue)
+        result = GameResult(chord=chord, emotion=emotion, descriptors=descriptors, dialogue=dialogue)
+        
+        if self.unreal_client:
+            self.unreal_client.send_game_result(result)
+            
+        return result
 
     def process_midi_file(self, file_path: str | Path) -> GameResult:
         chroma = derive_chroma_from_midi(file_path)
@@ -79,7 +56,12 @@ class MusicEmotionGame:
         descriptors: Dict[str, float | str] = {key: 0.0 for key in FEATURE_KEYS}
         emotion = self._infer_emotion({key: float(descriptors[key]) for key in FEATURE_KEYS}) if chord else None
         dialogue = self._generate_dialogue(chord, emotion, descriptors)
-        return GameResult(chord=chord, emotion=emotion, descriptors=descriptors, dialogue=dialogue)
+        result = GameResult(chord=chord, emotion=emotion, descriptors=descriptors, dialogue=dialogue)
+        
+        if self.unreal_client:
+            self.unreal_client.send_game_result(result)
+            
+        return result
 
     def _infer_emotion(self, descriptors: Dict[str, float | str]) -> Optional[EmotionPrediction]:
         numeric_features = {key: float(descriptors.get(key, 0.0)) for key in FEATURE_KEYS}

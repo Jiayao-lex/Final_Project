@@ -36,9 +36,22 @@ class OllamaClient:
         }
 
         with httpx.Client(timeout=self.timeout) as client:
-            response = client.post(f"{self.base_url}/api/generate", json=payload)
-            response.raise_for_status()
-            data = response.json()
+            try:
+                response = client.post(f"{self.base_url}/api/generate", json=payload)
+                response.raise_for_status()
+                data = response.json()
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code == 404:
+                    return DialogueTurn(
+                        role="assistant",
+                        content=f"Error: Model '{self.model}' not found. Please ensure it is pulled in Ollama (e.g., `ollama pull {self.model}`).",
+                    )
+                raise e
+            except httpx.RequestError:
+                return DialogueTurn(
+                    role="assistant",
+                    content="Error: Could not connect to Ollama. Is the service running?",
+                )
 
         content = data.get("response") or data.get("text") or "I need more data to respond."
         return DialogueTurn(role="assistant", content=content.strip())

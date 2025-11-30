@@ -10,12 +10,13 @@ import streamlit as st
 from dotenv import load_dotenv
 
 from src.music_game.audio.input import ChordPrediction
-from src.music_game.game.engine import GameConfig, GameResult, MusicEmotionGame
+from src.music_game.game.common import GameConfig, GameResult
+from src.music_game.game.engine import MusicEmotionGame
 
 load_dotenv()
 
 APP_TITLE = "Piano Emotion Quest"
-SUPPORTED_AUDIO_TYPES = ["audio/wav", "audio/x-wav", "audio/mpeg", "audio/ogg"]
+SUPPORTED_AUDIO_TYPES = ["audio/wav", "audio/x-wav", "audio/mpeg", "audio/ogg", "audio/webm"]
 SUPPORTED_MIDI_TYPES = ["audio/midi", "audio/x-midi", "application/octet-stream"]
 
 
@@ -40,6 +41,11 @@ def main() -> None:
         type=["wav", "mp3", "ogg", "midi", "mid"],
     )
 
+    audio_input = st.audio_input(
+        "Record a piano chord",
+        help="To change the microphone, click the camera/lock icon in your browser's address bar.",
+    )
+
     col1, col2 = st.columns([2, 1])
     with col1:
         st.header("Latest Response")
@@ -49,11 +55,19 @@ def main() -> None:
         chord_placeholder = st.empty()
         emotion_placeholder = st.empty()
 
-    if uploaded is None:
-        placeholder.info("Upload an audio or MIDI file to generate dialogue.")
+    if uploaded is None and audio_input is None:
+        placeholder.info("Upload an audio or MIDI file or record audio to generate dialogue.")
         return
 
-    result = _handle_upload(game, uploaded)
+    file_to_process = uploaded if uploaded is not None else audio_input
+
+    if file_to_process:
+        # Playback the input audio (skip MIDI)
+        is_midi = hasattr(file_to_process, "name") and file_to_process.name.lower().endswith((".mid", ".midi"))
+        if not is_midi:
+            st.audio(file_to_process)
+
+    result = _handle_upload(game, file_to_process)
     if result is None:
         placeholder.warning("Could not decode the submission. Try another file.")
         return
@@ -62,6 +76,13 @@ def main() -> None:
 
 
 def _handle_upload(game: MusicEmotionGame, uploaded_file) -> Optional[GameResult]:  # type: ignore[no-untyped-def]
+    # Ensure we start reading from the beginning of the file
+    uploaded_file.seek(0)
+
+    if uploaded_file.size == 0:
+        st.error("The received audio file is empty. Please check your microphone settings.")
+        return None
+
     suffix = Path(uploaded_file.name).suffix.lower()
     media_type = uploaded_file.type.lower() if uploaded_file.type else ""
 
@@ -72,8 +93,18 @@ def _handle_upload(game: MusicEmotionGame, uploaded_file) -> Optional[GameResult
     try:
         if media_type in SUPPORTED_MIDI_TYPES or suffix in {".midi", ".mid"}:
             return game.process_midi_file(temp_path)
-        if media_type in SUPPORTED_AUDIO_TYPES or suffix in {".wav", ".mp3", ".ogg"}:
+        
+        # Broader check for audio types
+        if (
+            media_type in SUPPORTED_AUDIO_TYPES 
+            or suffix in {".wav", ".mp3", ".ogg", ".webm"} 
+            or media_type.startswith("audio/")
+        ):
             return game.process_audio_file(temp_path)
+            
+    except Exception as e:
+        st.error(f"Error processing audio file: {e}")
+        return None
     finally:
         try:
             temp_path.unlink()

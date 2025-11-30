@@ -25,6 +25,7 @@
 	Skip this step for "Hello World" projects.
 	-->
 	- Established audio/emotion/LLM pipeline modules and Streamlit UI aligning with prototype goals.
+	- Added audio input support via `st.audio_input`.
 
 - [x] Install Required Extensions
 	<!-- ONLY install extensions provided mentioned in the get_project_setup_info. Skip this step otherwise and mark as completed. -->
@@ -47,11 +48,12 @@
 	 -->
 	- Added VS Code task to launch Streamlit development server.
 
-- [ ] Launch the Project
+- [x] Launch the Project
 	<!--
 	Verify that all previous steps have been completed.
 	Prompt user for debug mode, launch only if confirmed.
 	 -->
+	- Launched Streamlit development server via VS Code task.
 
 - [ ] Ensure Documentation is Complete
 	<!--
