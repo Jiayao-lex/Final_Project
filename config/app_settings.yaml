@@ -7,6 +7,11 @@ emotion_labels:
   - melancholic
   - tense
   - calm
+animations:
+  joyful: "assets/animations/joyful.mp4"
+  melancholic: "assets/animations/melancholic.mp4"
+  tense: "assets/animations/tense.mp4"
+  calm: "assets/animations/calm.mp4"
 ollama:
   model: llama3
   max_tokens: 128

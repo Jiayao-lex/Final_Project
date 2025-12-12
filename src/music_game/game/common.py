@@ -27,6 +27,7 @@ class GameConfig:
     hop_length: int = 512
     confidence_threshold: float = 0.5
     emotion_labels: List[str] = field(default_factory=lambda: ["joyful", "melancholic", "tense", "calm"])
+    animations: Dict[str, str] = field(default_factory=dict)
     ollama_model: str = "llama3"
     history_limit: int = 6
     
@@ -47,6 +48,7 @@ class GameConfig:
             hop_length=int(raw.get("hop_length", cls.hop_length)),
             confidence_threshold=float(raw.get("confidence_threshold", cls.confidence_threshold)),
             emotion_labels=list(raw.get("emotion_labels", cls().emotion_labels)),
+            animations=dict(raw.get("animations", {})),
             ollama_model=str(raw.get("ollama", {}).get("model", cls.ollama_model)),
             history_limit=int(raw.get("history_limit", cls.history_limit)),
             unreal_enabled=bool(unreal_config.get("enabled", False)),

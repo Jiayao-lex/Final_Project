@@ -8,6 +8,7 @@ from io import BytesIO
 
 import numpy as np
 import streamlit as st
+import cv2
 from dotenv import load_dotenv
 from gtts import gTTS
 
@@ -75,7 +76,7 @@ def main() -> None:
         placeholder.warning("Could not decode the submission. Try another file.")
         return
 
-    _render_result(placeholder, chord_placeholder, key_placeholder, emotion_placeholder, result)
+    _render_result(placeholder, chord_placeholder, key_placeholder, emotion_placeholder, result, game.config)
 
 
 def _handle_upload(game: MusicEmotionGame, uploaded_file) -> Optional[GameResult]:  # type: ignore[no-untyped-def]
@@ -117,14 +118,14 @@ def _handle_upload(game: MusicEmotionGame, uploaded_file) -> Optional[GameResult
     return None
 
 
-def _render_result(placeholder, chord_placeholder, key_placeholder, emotion_placeholder, result: GameResult) -> None:  # type: ignore[no-untyped-def]
+def _render_result(placeholder, chord_placeholder, key_placeholder, emotion_placeholder, result: GameResult, config: GameConfig) -> None:  # type: ignore[no-untyped-def]
     chord_label = result.chord.label if result.chord else "Unknown"
     key_label = result.key.label if result.key else "Unknown"
     emotion_label = result.emotion.label if result.emotion else "Undetermined"
 
     if result.dialogue:
         placeholder.success(result.dialogue.content)
-        
+
         # Generate TTS
         try:
             tts = gTTS(text=result.dialogue.content, lang='en')
@@ -142,6 +143,48 @@ def _render_result(placeholder, chord_placeholder, key_placeholder, emotion_plac
 
     if result.emotion:
         emotion_placeholder.metric(label="Emotion", value=emotion_label, delta=f"{result.emotion.confidence:.2f}")
+        
+        # Display Animation
+        if result.emotion.label in config.animations:
+            anim_path = config.animations[result.emotion.label]
+            if Path(anim_path).exists():
+                st.subheader("Emotion Animation")
+                if str(anim_path).lower().endswith(".avi"):
+                    # AVI is not supported by browsers, so we read it with OpenCV and display frames
+                    # This is a fallback and might be slow
+                    try:
+                        cap = cv2.VideoCapture(str(anim_path))
+                        if not cap.isOpened():
+                            st.warning(f"Could not open AVI file: {anim_path}")
+                        else:
+                            # Read all frames into memory (careful with large files)
+                            frames = []
+                            while True:
+                                ret, frame = cap.read()
+                                if not ret:
+                                    break
+                                # Convert BGR to RGB
+                                frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                                frames.append(frame)
+                            cap.release()
+                            
+                            if frames:
+                                # Display as a simple image sequence (not a real video player)
+                                # Or just display the first frame as a preview
+                                # st.image(frames[0], caption="Animation Preview (AVI not supported in browser)")
+                                
+                                # Better: Try to convert to a temporary MP4 if possible? 
+                                # Without ffmpeg/moviepy, we can't easily write MP4.
+                                # So we just show a warning and maybe the first frame.
+                                st.warning("AVI format is not supported by web browsers. Please convert to MP4 for full playback.")
+                                st.image(frames[0], caption="Preview")
+                    except Exception as e:
+                        st.error(f"Error reading AVI file: {e}")
+                else:
+                    st.video(anim_path)
+            else:
+                st.warning(f"Animation file not found: {anim_path}")
+
         probs = result.emotion.probabilities
         chart_data = {label: value for label, value in probs.items()}
         st.bar_chart(chart_data)
